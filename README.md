@@ -1,29 +1,39 @@
 **中文** | [教程](https://p3terx.com/archives/build-openwrt-with-github-actions.html)
 
+<img src="tr3000.png" height=200px align="center">
+
 # Actions-OpenWrt
+
+基于 **GitHub Actions** 的 OpenWrt 固件自动编译项目，支持 Cudy TR3000 (128M 新 flash)。
+
+---
 
 ## immortalwrt 源码
 
 编译自 https://github.com/padavanonly/immortalwrt-mt798x-6.6 兼容 Cudy Tr3000 128M 新 flash
 
+---
+
 ## 大分区 ubootmod 固件
 
-默认 ubootmod 固件为 112M 分区，若你想编译 122M 分区固件，请将 `diy-part2.sh` 中的
+本仓库默认编译的 ubootmod 固件为 112M 分区，若你想编译 122M 分区固件，请将 `diy-part2.sh` 中取消以下注释：
 
 ```sh
 # set ubi to 122M
 # sed -i 's/reg = <0x5c0000 0x7000000>;/reg = <0x5c0000 0x7a40000>;/' target/linux/mediatek/dts/mt7981b-cudy-tr3000-v1-ubootmod.dts
 ```
 
-取消注释
+---
 
 ## 三分区 uboot
 
-编译自 https://github.com/ZT229/bl-mt798x_tr3000 兼容新 flash 
+编译自 https://github.com/hanwckf/bl-mt798x 兼容新 flash
 
 支持原厂 ubi 大小 64MB，扩容 ubi 分区 112MB，最大 ubi 分区 122MB
 
-## USB 供电
+---
+
+## USB 供电控制
 
 若你想关闭 USB 供电执行命令
 
@@ -37,6 +47,8 @@ echo 0 > /sys/class/gpio/modem_power/value
 echo 1 > /sys/class/gpio/modem_power/value
 ```
 
+---
+
 ## 第三方软件包
 
 - [OpenClash](https://github.com/vernesong/OpenClash)
@@ -45,12 +57,13 @@ echo 1 > /sys/class/gpio/modem_power/value
 - luci-app-upnp
 - kmod-usb-net-cdc-ether
 - kmod-usb-net-rndis
+- kmod-mtd-rw(仅128M固件支持)
 
-## Notice
+---
 
-由于 Github 储存限制，若你想在固件中集成 sing-box 或者 alist 这种大型软件包，建议使用预编译文件，即在编译过程中加入已经编译好现成软件包，而非从源码构建。否则你应该会碰到超长编译时间 + 超出 Action 储存。
+## 编译注意事项
 
-这里举个例子，在 diy-part2.sh 脚本中写入
+GitHub Actions 存储有限，大型软件包（如 sing-box 或 alist）建议使用预编译方式，而不是源码编译，即在编译过程中加入已经编译好现成软件包。否则你应该会碰到超长编译时间 + 超出 Action 储存。示例：
 
 ```sh
 # 创建存储二进制文件的目录
@@ -75,9 +88,12 @@ rm -rf "$TMP_DIR"
 rm sing-box.tar.gz
 ```
 
+---
+
 ## Credits
 
-- [bl-mt798x-tr3000](https://github.com/ZT229/bl-mt798x_tr3000)
+- [bl-mt798x](https://github.com/hanwckf/bl-mt798x)
+- [bl-mt798x](https://github.com/sos801107/bl-mt798x-oss)
 - [immortalwrtwrt](https://github.com/padavanonly/immortalwrt-mt798x-6.6)
 - [P3TERX](https://github.com/P3TERX)
 - [Microsoft Azure](https://azure.microsoft.com)
@@ -89,6 +105,8 @@ rm sing-box.tar.gz
 - [Mattraks/delete-workflow-runs](https://github.com/Mattraks/delete-workflow-runs)
 - [dev-drprasad/delete-older-releases](https://github.com/dev-drprasad/delete-older-releases)
 - [peter-evans/repository-dispatch](https://github.com/peter-evans/repository-dispatch)
+
+---
 
 ## License
 
