@@ -96,9 +96,8 @@ jobs:
         run: |
           DEVICE="${{ github.event.inputs.device_size }}"
           MULTI_LAYOUT_FLAG="${{ github.event.inputs.multi_layout }}"
-          if [ "$DEVICE" = "256" ]; then DEVICE_NAME="256M"; else DEVICE_NAME="128M"; fi
           if [ "$MULTI_LAYOUT_FLAG" = "true" ]; then ML_FLAG="Yes"; ML_SHORT="multi"; else ML_FLAG="No"; ML_SHORT="single"; fi
-          FIRMWARE_NAME="uboot-${DEVICE_NAME}-${ML_SHORT}"
+          FIRMWARE_NAME="uboot-${WRT_DEVICE}-${ML_SHORT}"
           BUILD_TIME=$(date +"%Y%m%d-%H%M")
           RELEASE_TAG="${FIRMWARE_NAME}-${BUILD_TIME}"
           echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
