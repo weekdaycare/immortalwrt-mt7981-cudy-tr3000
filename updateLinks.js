@@ -15,7 +15,10 @@ async function updateDownloadLinksAndTimesByIndex() {
     };
 
     for (const release of releases) {
-      const name = release.name;
+      // Skip pre-releases and drafts
+      if (release.prerelease) continue;
+      if (release.draft) continue;
+      const name = release.name || "";
       for (const key of keys) {
         if (name === key || name.startsWith(key + "-")) {
           const currentTime = latestReleases[key]?.timestamp || null;
