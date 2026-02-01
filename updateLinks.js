@@ -1,92 +1,62 @@
 async function updateDownloadLinksAndTimesByIndex() {
-  const apiUrl =
-    "https://api.github.com/repos/weekdaycare/immortalwrt-mt7981-cudy-tr3000/releases";
+  const API_URL = "https://api.github.com/repos/weekdaycare/immortalwrt-mt7981-cudy-tr3000/releases";
+  
+  // 配置映射表：匹配规则、对应的 ID、以及是否为 uboot
+  const CONFIG = [
+    { id: "256M", timeId: "time-256M", match: n => n.startsWith("256m-") },
+    { id: "128M", timeId: "time-128M", match: n => n.startsWith("128m-") },
+    { id: "128M_U", timeId: "time-128M-ubootmod", match: n => n.includes("ubootmod") },
+    { id: "U128", timeId: "time-uboot-128M", match: n => n.startsWith("uboot-128m") },
+    { id: "U256", timeId: "time-uboot-256M", match: n => n.startsWith("uboot-256m") }
+  ];
+
   try {
-    const response = await fetch(apiUrl);
-    if (!response.ok) throw new Error("GitHub API error: " + response.status);
-    const releases = await response.json();
+    const res = await fetch(API_URL);
+    if (!res.ok) return;
+    const releases = (await res.json()).filter(r => !r.prerelease && !r.draft);
 
-    const keys = ["256M", "128M", "128M_Ubootmod", "uboot"];
-    const latestReleases = {
-      "256M": null,
-      "128M": null,
-      "128M_Ubootmod": null,
-      uboot: null,
-    };
+    const linkElements = document.querySelectorAll(".item.grid-4 > a");
 
-    for (const release of releases) {
-      // Skip pre-releases and drafts
-      if (release.prerelease) continue;
-      if (release.draft) continue;
-      const name = release.name || "";
-      for (const key of keys) {
-        if (name === key || name.startsWith(key + "-")) {
-          const currentTime = latestReleases[key]?.timestamp || null;
-          const publishedAt = release.published_at;
-          if (!publishedAt) continue;
-          if (!currentTime || publishedAt > currentTime) {
-            latestReleases[key] = { release, timestamp: publishedAt };
-          }
-        }
-      }
-    }
+    CONFIG.forEach((conf, index) => {
+      // 找到第一个匹配的 release（API 默认最新在前）
+      const latest = releases.find(r => conf.match((r.name || "").toLowerCase()));
+      if (!latest || !linkElements[index]) return;
 
-    const linkElements = Array.from(
-      document.querySelectorAll(".item.grid-6 > a"),
-    );
-    const timeIds = [
-      "time-256M",
-      "time-128M",
-      "time-128M-ubootmod",
-      "time-uboot",
-    ];
+      // 更新时间
+      const timeElem = document.getElementById(conf.timeId);
+      if (timeElem) timeElem.textContent = latest.published_at.replace(/[TZ]/g, " ").trim();
 
-    keys.forEach((key, index) => {
-      const data = latestReleases[key];
-      if (data && linkElements[index]) {
-        const hrefElem = linkElements[index];
-        const timeElem = document.getElementById(timeIds[index]);
-        const timeStr = data.timestamp.replace(/T/, " ").replace(/Z/, "");
-        timeElem.textContent = timeStr;
-        if (key === "uboot") {
-          hrefElem.href = data.release.html_url;
-        } else {
-          const asset = data.release.assets.find((a) =>
-            a.browser_download_url.includes("sysupgrade.bin"),
-          );
-          hrefElem.href = asset.browser_download_url;
-        }
+      // 更新链接
+      if (conf.id.startsWith("U")) {
+        linkElements[index].href = latest.html_url;
+      } else {
+        const asset = latest.assets.find(a => a.browser_download_url.includes("sysupgrade.bin"));
+        if (asset) linkElements[index].href = asset.browser_download_url;
       }
     });
   } catch (err) {
-    console.error("Failed to update links:", err);
+    console.error("Update failed:", err);
   }
 }
 
-// 只在主页首次加载和用户切回主页时执行更新
-function runUpdateOnHomepage() {
-  if (window.location.pathname === "/") {
-    updateDownloadLinksAndTimesByIndex();
-  }
+// 路由监听逻辑优化
+function runUpdate() {
+  if (window.location.pathname === "/") updateDownloadLinksAndTimesByIndex();
 }
 
+// 初始化
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", runUpdateOnHomepage);
+  document.addEventListener("DOMContentLoaded", runUpdate);
 } else {
-  runUpdateOnHomepage();
+  runUpdate();
 }
 
-window.addEventListener("popstate", runUpdateOnHomepage);
-
-(function () {
-  const pushState = history.pushState;
-  history.pushState = function () {
-    pushState.apply(history, arguments);
-    runUpdateOnHomepage();
+// 劫持 History API
+["pushState", "replaceState"].forEach(type => {
+  const original = history[type];
+  history[type] = function() {
+    original.apply(this, arguments);
+    runUpdate();
   };
-  const replaceState = history.replaceState;
-  history.replaceState = function () {
-    replaceState.apply(history, arguments);
-    runUpdateOnHomepage();
-  };
-})();
+});
+window.addEventListener("popstate", runUpdate);
