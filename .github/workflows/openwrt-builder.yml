@@ -12,18 +12,19 @@ on:
         description: '编译设备型号'
         required: true
         type: choice
-        default: '256M'
+        default: 'all'
         options:
           - '256M'
           - '128M'
           - '128M-Ubootmod'
+          - 'all' 
       commit:
         description: '指定源码commit进行编译，留空拉取最新源码'
         required: false
         type: string
         default: ''
       ssh:
-        description: '是否执行 make menuconfig'
+        description: '是否执行 make menuconfig, 编译设备为 all 时无效'
         required: false
         type: boolean
         default: false
@@ -43,8 +44,6 @@ env:
   FEEDS_CONF: feeds.conf.default
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false
-  UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
   PRERELEASE: ${{ github.event.inputs.prerelease }}
   TZ: Asia/Shanghai
@@ -52,7 +51,7 @@ env:
 jobs:
   menuconfig:
     name: ⚙️ Menuconfig & Push
-    if: github.event.inputs.ssh == 'true'
+    if: github.event.inputs.ssh == 'true' && github.event.inputs.device != 'all'
     runs-on: ubuntu-22.04
     steps:
       - name: 🙌 Checkout
@@ -77,37 +76,27 @@ jobs:
             "256M") echo "CONFIG_FILE=config/256m.config" >> $GITHUB_ENV ;;
             "128M") echo "CONFIG_FILE=config/128m.config" >> $GITHUB_ENV ;;
             "128M-Ubootmod") echo "CONFIG_FILE=config/128muboot.config" >> $GITHUB_ENV ;;
-            *) echo "Unknown device: $DEVICE_INPUT" >&2; exit 1 ;;
           esac
 
       - name: 👩‍💻 Copy previous config if exists
         run: |
           if [ -f "$GITHUB_WORKSPACE/${CONFIG_FILE}" ]; then
-            echo "📁 Copying previous config to openwrt/.config"
             cp -f "$GITHUB_WORKSPACE/${CONFIG_FILE}" /workdir/openwrt/.config
-          else
-            echo "⚠️ No previous config found at $GITHUB_WORKSPACE/${CONFIG_FILE}"
           fi
 
       - name: ⚙️ Load custom feeds
         run: |
-          set -e
           [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
           chmod +x $DIY_P1_SH
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P1_SH
 
-      - name: 🧬 Update feeds
-        run: cd openwrt && ./scripts/feeds update -a
-
-      - name: 🪛 Install feeds
-        run: cd openwrt && ./scripts/feeds install -a
+      - name: 🧬 Update & Install feeds
+        run: cd openwrt && ./scripts/feeds update -a && ./scripts/feeds install -a
 
       - name: 🧩 Load custom configuration
         run: |
-          set -e
-          [ -e files ] && mv files openwrt/files
-          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+          [ -e $CONFIG_FILE ] && cp -f $CONFIG_FILE openwrt/.config
           chmod +x $DIY_P2_SH
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
@@ -117,54 +106,26 @@ jobs:
         timeout-minutes: 15
           
       - name: 📤 Push config to main branch
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -e
-
           SRC="/workdir/openwrt/.config"
           DST="$GITHUB_WORKSPACE/${CONFIG_FILE}"
-
-          echo "Source: $SRC"
-          echo "Target: $DST"
-
-          if [ ! -f "$SRC" ]; then
-            echo "No .config found at $SRC. Nothing to do."
-            exit 0
-          fi
-
-          # 确保目标目录存在并拷贝  
-          mkdir -p "$(dirname "$DST")"   
-          cp -f "$SRC" "$DST"   
-          echo "Copied .config to $DST"   
- 
-          cd "$GITHUB_WORKSPACE"   
-   
-          git config user.name "github-actions[bot]"   
-          git config user.email "github-actions[bot]@users.noreply.github.com"   
- 
-          # 检查是否有变更  
-          git add "$CONFIG_FILE"   
-          if git diff --cached --quiet; then  
-            echo "No changes to commit."   
-            exit 0  
-          fi  
- 
-          # 直接推送到主分支  
-          git commit -m "Update OpenWrt config: ${CONFIG_FILE}"   
-          git push origin HEAD:main
+          mkdir -p "$(dirname "$DST")"
+          cp -f "$SRC" "$DST"
+          cd "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$CONFIG_FILE"
+          git diff --cached --quiet || (git commit -m "Update config: ${CONFIG_FILE}" && git push origin HEAD:main)
 
   build:
     name: 🔨 Build Firmware
     needs: menuconfig
-    if: ${{ always() && (needs.menuconfig.result == 'success' || needs.menuconfig.result == 'skipped') }}
+    if: always() && (needs.menuconfig.result == 'success' || needs.menuconfig.result == 'skipped')
     runs-on: ubuntu-22.04
     
     steps:
       - name: 🙌 Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
 
       - name: 🪠 Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -178,210 +139,121 @@ jobs:
           swap-storage: true
 
       - name: 🛠️ Init Environment
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: |
-          echo "📦 Installing dependencies..."
           sudo -E apt-get -qq update
           sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
-          sudo -E apt-get -qq autoremove --purge
-          sudo -E apt-get -qq clean
-
-          echo "⏰ Setting timezone to $TZ"
           sudo timedatectl set-timezone "$TZ"
-
-          echo "📁 Creating workdir"
           sudo mkdir -p /workdir
           sudo chown $USER:$GROUPS /workdir
-
-          echo "💾 Disk space after cleanup:"
-          df -hT
 
       - name: 🪜 Clone source code
         working-directory: /workdir
         run: |
-          set -e
-          echo "📥 Initializing repository..."
-          mkdir openwrt && cd openwrt
-          git init
-          git remote add origin $REPO_URL
-
+          git clone $REPO_URL -b $REPO_BRANCH --single-branch --filter=blob:none openwrt
           if [ -n "${REPO_COMMIT}" ]; then
-            echo "🔀 Fetching specified commit: ${REPO_COMMIT}"
-            # 直接抓取特定 commit，深度为 1
-            git fetch --depth 1 origin "${REPO_COMMIT}"
-            git checkout FETCH_HEAD
-          else
-            echo "🆕 Fetching latest commit on branch: ${REPO_BRANCH}"
-            # 直接抓取特定分支，深度为 1
-            git fetch --depth 1 origin "${REPO_BRANCH}"
-            git checkout FETCH_HEAD
+            cd openwrt && git checkout ${REPO_COMMIT}
           fi
-
           ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-          echo "✅ Source code cloned successfully"
 
-      - name: 🔧 Set device variables
-        run: |
-          case "$DEVICE_INPUT" in
-            "256M")
-              echo "CONFIG_FILE=config/256m.config" >> $GITHUB_ENV
-              echo "FIRMWARE_NAME=256M" >> $GITHUB_ENV
-              echo "DELETE_TAG_PATTERN=^256M-.*" >> $GITHUB_ENV
-              ;;
-            "128M")
-              echo "CONFIG_FILE=config/128m.config" >> $GITHUB_ENV
-              echo "FIRMWARE_NAME=128M" >> $GITHUB_ENV
-              echo "DELETE_TAG_PATTERN=^128M-.*" >> $GITHUB_ENV
-              ;;
-            "128M-Ubootmod")
-              echo "CONFIG_FILE=config/128muboot.config" >> $GITHUB_ENV
-              echo "FIRMWARE_NAME=128M_Ubootmod" >> $GITHUB_ENV
-              echo "DELETE_TAG_PATTERN=^128M_Ubootmod-.*" >> $GITHUB_ENV
-              ;;
-          esac
-
-      - name: ⚙️ Load custom feeds
-        run: |
-          set -e
-          [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
-          chmod +x $DIY_P1_SH
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P1_SH
-
-      - name: 🧬 Update feeds
-        run: cd openwrt && ./scripts/feeds update -a
-
-      - name: 🪛 Install feeds
-        run: cd openwrt && ./scripts/feeds install -a
-
-      - name: 🧩 Load custom configuration
-        run: |
-          set -e
-          [ -e files ] && mv files openwrt/files
-          [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-          chmod +x $DIY_P2_SH
-          cd openwrt
-          $GITHUB_WORKSPACE/$DIY_P2_SH
-
-      - name: 📝 Generate config hash for cache
-        id: config-hash
-        run: |
-          cd openwrt
-          make defconfig
-          CONFIG_HASH=$(md5sum .config | awk '{print $1}')
-          echo "hash=$CONFIG_HASH" >> $GITHUB_OUTPUT
-          echo "📋 Config hash: $CONFIG_HASH"
-
-      - name: ⚙️ Setup ccache cache
+      - name: ⚙️ Setup ccache & DL cache
         uses: actions/cache@v4
         with:
-          path: /workdir/.ccache
-          key: ${{ runner.os }}-ccache-${{ env.REPO_BRANCH }}-${{ steps.config-hash.outputs.hash }}
-
-      - name: ⚙️ Setup downloads cache
-        uses: actions/cache@v4
-        with:
-          path: /workdir/openwrt/dl
-          key: ${{ runner.os }}-openwrt-dl-${{ env.REPO_BRANCH }}-${{ steps.config-hash.outputs.hash }}
+          path: |
+            /workdir/.ccache
+            /workdir/openwrt/dl
+          key: ${{ runner.os }}-openwrt-combined-${{ env.REPO_BRANCH }}-${{ hashFiles('config/*.config') }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-combined-${{ env.REPO_BRANCH }}-
 
       - name: 🔧 Configure ccache
         run: |
           ccache --set-config=max_size=$CCACHE_MAXSIZE
           ccache --set-config=cache_dir=$CCACHE_DIR
           ccache --set-config=compression=true
-          ccache --set-config=compression_level=6
           ccache -z
-          echo "✅ ccache configured with max size: $CCACHE_MAXSIZE"
 
-      - name: 🕹️ Download packages
-        id: package
+      - name: 🧬 Update & Install feeds
         run: |
           cd openwrt
-          echo "📦 Downloading packages..."
-          make download -j$(nproc)
-          echo "🔍 Checking for failed downloads..."
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
+          [ -e $GITHUB_WORKSPACE/$FEEDS_CONF ] && mv $GITHUB_WORKSPACE/$FEEDS_CONF feeds.conf.default
+          chmod +x $GITHUB_WORKSPACE/$DIY_P1_SH
+          $GITHUB_WORKSPACE/$DIY_P1_SH
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-      - name: 🔮 Compile the firmware
+      - name: 🔨 Multi-Device Compilation Loop
         id: compile
         run: |
-          cd openwrt
-          echo "🔨 Starting compilation with $(nproc) threads"
-          echo "CCACHE_DIR: $CCACHE_DIR"
-
-          # 首先尝试多线程编译
-          if make -j$(nproc) CC="ccache gcc" CXX="ccache g++"; then
-            echo "✅ Multi-threaded compilation succeeded"
-            echo "status=success" >> $GITHUB_OUTPUT
+          # 1. 确定编译列表
+          if [ "${DEVICE_INPUT}" = "all" ]; then
+            DEVICES="256M 128M 128M-Ubootmod"
           else
-            echo "⚠️ Multi-threaded compilation failed, retrying with single thread and verbose output..."
-            make -j1 V=s
-            if [ $? -eq 0 ]; then
-              echo "✅ Single-threaded compilation succeeded"
-              echo "status=success" >> $GITHUB_OUTPUT
-            else
-              echo "❌ Compilation failed"
-              echo "status=failure" >> $GITHUB_OUTPUT
-              exit 1
-            fi
+            DEVICES="${DEVICE_INPUT}"
           fi
 
-          # 显示 ccache 统计
-          echo "📊 ccache statistics:"
-          ccache -s
+          mkdir -p $GITHUB_WORKSPACE/firmware_collection
 
-          # 获取设备名称
-          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
-          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
-          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+          cd /workdir/openwrt
 
-          echo "📱 Device: $(cat DEVICE_NAME 2>/dev/null || echo 'unknown')"
-          echo "📅 Build date: $(date +"%Y-%m-%d %H:%M:%S")"
+          for DEV in $DEVICES; do
+            echo "::group::🚀 Building $DEV"
+            
+            # 2. 设置当前设备配置文件
+            case "$DEV" in
+              "256M") CONFIG="config/256m.config" ;;
+              "128M") CONFIG="config/128m.config" ;;
+              "128M-Ubootmod") CONFIG="config/128muboot.config" ;;
+            esac
+            
+            echo "Using Config: $CONFIG"
+            
+            # 3. 加载配置
+            cp -f $GITHUB_WORKSPACE/$CONFIG .config
+            # 执行 DIY 脚本处理
+            chmod +x $GITHUB_WORKSPACE/$DIY_P2_SH
+            $GITHUB_WORKSPACE/$DIY_P2_SH
+            
+            # 4. 刷新配置并下载
+            make defconfig
+            make download -j$(nproc)
+            
+            # 5. 开始编译
+            # 使用 ccache 加速，并保留 Toolchain
+            if ! make -j$(nproc) CC="ccache gcc" CXX="ccache g++"; then
+              echo "⚠️ Multi-threaded failed, retrying single-threaded..."
+              make -j1 V=s || exit 1
+            fi
 
-      - name: 🛠️ Check space usage
-        if: (!cancelled())
-        run: |
-          echo "💾 Disk space usage:"
-          df -hT
-          echo ""
-          echo "📊 Build directory size:"
-          du -sh /workdir/openwrt 2>/dev/null || echo "Unable to calculate"
+            # 6. 收集产物
+            # 直接寻找所有 bin 文件并复制
+            echo "📥 Collecting artifacts for $DEV..."
+            find bin/targets/ -name "*sysupgrade.bin" -exec cp {} $GITHUB_WORKSPACE/firmware_collection/ \;
+            find bin/targets/ -name "*.itb" -exec cp {} $GITHUB_WORKSPACE/firmware_collection/ \; || true
 
-      - name: 🪄 Upload bin directory
-        uses: actions/upload-artifact@v4
-        if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
-        with:
-          name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-          path: openwrt/bin
-          compression-level: 9
-
-      - name: ⌚ Organize files
-        id: organize
-        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
-        run: |
-          cd openwrt/bin/targets/*/*
-          rm -rf packages
-          echo "📂 Firmware files:"
-          ls -lh
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+            # 8. 定向清理
+            echo "🧹 Partial cleaning to save disk space while keeping toolchain..."
+            rm -rf ./build_dir/target-* 
+            rm -rf ./bin/targets/*
+            
+            echo "✅ $DEV build finished."
+            df -hT /workdir
+            echo "::endgroup::"
+          done
           echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: 📢 Upload firmware directory
+      - name: 🪄 Upload Binaries (Artifacts)
         uses: actions/upload-artifact@v4
-        if: steps.organize.outputs.status == 'success' && !cancelled()
+        if: steps.compile.outputs.status == 'success'
         with:
-          name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-          path: ${{ env.FIRMWARE }}
-          compression-level: 9
+          name: ImmortalWrt_Combined_${{ env.DEVICE_INPUT }}_${{ env.REPO_BRANCH }}
+          path: ${{ github.workspace }}/firmware_collection/*
 
-      - name: 📌 Generate release tag
+      - name: 📌 Generate Release Tag
         id: tag
         if: env.UPLOAD_RELEASE == 'true' && !cancelled()
         run: |
           BUILD_TIME=$(date +"%Y%m%d-%H%M")
-          RELEASE_TAG="${FIRMWARE_NAME}-${BUILD_TIME}"
+          RELEASE_TAG="${DEVICE_INPUT}-${BUILD_TIME}"
           echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
           cat > release.txt << EOF
@@ -389,7 +261,7 @@ jobs:
 
           **🏷️ Release:** $RELEASE_TAG
           **🌿 Branch:** $REPO_BRANCH
-          **📱 Device:** $(cat openwrt/DEVICE_NAME 2>/dev/null || echo 'N/A')
+          **📱 Device:** ${DEVICE_INPUT}
           **📅 Build Date:** $(date +"%Y-%m-%d %H:%M:%S")
           **🔨 Compiler:** GCC with ccache
 
@@ -404,20 +276,17 @@ jobs:
 
           echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: 📤 Upload firmware to release
+      - name: 📤 Upload to Release
         uses: softprops/action-gh-release@v2
         if: steps.tag.outputs.status == 'success' && !cancelled()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           body_path: release.txt
           prerelease: ${{ env.PRERELEASE == 'true' }}
-          files: ${{ env.FIRMWARE }}/*sysupgrade.bin
+          files: ${{ github.workspace }}/firmware_collection/*
 
       - name: 🚧 Delete old workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         with:
           retain_days: 0
           keep_minimum_runs: 9
-
