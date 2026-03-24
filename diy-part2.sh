@@ -37,3 +37,18 @@ tar -zxvf "clash_meta.tar.gz" -C files/etc/openclash/core/
 mv files/etc/openclash/core/clash files/etc/openclash/core/clash_meta
 chmod +x files/etc/openclash/core/clash_meta
 rm -f "clash_meta.tar.gz"
+
+mkdir -p files/etc/opkg
+mkdir -p files/etc/opkg/keys
+cat > files/etc/opkg/customfeeds.conf << 'EOF'
+# add your custom package feeds here
+#
+# src/gz example_feed_name http://www.example.com/path/to/files
+src/gz openwrt_tailscale https://gunanovo.github.io/openwrt-tailscale/aarch64_cortex-a53
+src/gz tailscale_community https://Tokisaki-Galaxy.github.io/luci-app-tailscale-community/all
+EOF
+
+wget -O files/etc/opkg/keys/openwrt-tailscale.pub \
+https://gunanovo.github.io/openwrt-tailscale/key-build.pub
+wget -O files/etc/opkg/keys/luci-app-tailscale-community.pub \
+https://Tokisaki-Galaxy.github.io/luci-app-tailscale-community/all/key-build.pub
