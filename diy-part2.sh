@@ -52,3 +52,11 @@ wget -O files/etc/opkg/keys/openwrt-tailscale.pub \
 https://gunanovo.github.io/openwrt-tailscale/key-build.pub
 wget -O files/etc/opkg/keys/luci-app-tailscale-community.pub \
 https://Tokisaki-Galaxy.github.io/luci-app-tailscale-community/all/key-build.pub
+
+# openwrt-tailscale 需要最新 golang 工具链
+rm -rf feeds/packages/lang/golang
+git clone https://github.com/sbwml/packages_lang_golang -b 26.x --single-branch --filter=blob:none feeds/packages/lang/golang
+wget -q https://github.com/upx/upx/releases/download/v5.1.1/upx-5.1.1-amd64_linux.tar.xz 
+tar -xf upx-5.1.1-amd64_linux.tar.xz
+mv upx-5.1.1-amd64_linux upx
+rm upx-5.1.1-amd64_linux.tar.xz

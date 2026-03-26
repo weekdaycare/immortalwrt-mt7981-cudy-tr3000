@@ -17,9 +17,12 @@
 #echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.default
 #echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
 
-git clone https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community.git package/luci-app-tailscale-community
-git clone https://github.com/GuNanOvO/openwrt-tailscale.git package/openwrt-tailscale
-git clone https://github.com/eamonxg/luci-theme-aurora package/luci-theme-aurora
-git clone https://github.com/eamonxg/luci-app-aurora-config package/luci-app-aurora-config
-git clone https://github.com/timsaya/luci-app-bandix package/luci-app-bandix
-git clone https://github.com/timsaya/openwrt-bandix package/openwrt-bandix
+# openwrt-tailscale 让 golang 工具链参与进来
+git clone https://github.com/GuNanOvO/openwrt-tailscale.git --single-branch --filter=blob:none package/openwrt-tailscale
+sed -i '/PKG_BUILD_DIR/a PKG_BUILD_DEPENDS:=golang\/host' package/openwrt-tailscale/package/tailscale/Makefile
+
+git clone https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community.git --single-branch --filter=blob:none package/luci-app-tailscale-community
+git clone https://github.com/eamonxg/luci-theme-aurora --single-branch --filter=blob:none package/luci-theme-aurora
+git clone https://github.com/eamonxg/luci-app-aurora-config --single-branch --filter=blob:none package/luci-app-aurora-config
+git clone https://github.com/timsaya/luci-app-bandix --single-branch --filter=blob:none package/luci-app-bandix
+git clone https://github.com/timsaya/openwrt-bandix --single-branch --filter=blob:none package/openwrt-bandix
