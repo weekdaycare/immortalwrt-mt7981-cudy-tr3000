@@ -48,7 +48,7 @@ env:
   DEVICE_INPUT: ${{ github.event.inputs.device || github.event.client_payload.device }}
   CCACHE_DIR: /workdir/.ccache
   CCACHE_MAXSIZE: 2G
-  REPO_URL: ${{ github.event.inputs.repo }}
+  REPO_URL: ${{ github.event.inputs.repo || github.event.client_payload.repo }}
   REPO_BRANCH: openwrt-24.10-6.6
   REPO_COMMIT: ${{ github.event.inputs.commit }}
   FEEDS_CONF: feeds.conf.default
