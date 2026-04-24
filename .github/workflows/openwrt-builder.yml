@@ -125,7 +125,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$CONFIG_FILE"
-          git diff --cached --quiet || (git commit -m "Update config: ${CONFIG_FILE}" && git push origin HEAD:main)
+          
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          
+          git diff --cached --quiet || (
+            git commit -m "Update config: ${CONFIG_FILE}" || true
+            git pull --rebase origin $CURRENT_BRANCH
+            git push -f origin HEAD:$CURRENT_BRANCH
+          )
 
   build:
     name: 🔨 Build Firmware
